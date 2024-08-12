@@ -16,6 +16,12 @@ def some_jax_code():
     ...
 ```
 
+or run it in the background
+
+```python
+profiler.capture_in_background()
+```
+
 Generate plots from profiler logs
 
 ```bash

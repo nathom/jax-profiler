@@ -1,4 +1,5 @@
 import logging
+import json
 import argparse
 import re
 import subprocess
@@ -30,16 +31,22 @@ class JaxProfiler:
         self._stop_event = threading.Event()
         self.i = 0
 
-    def run(self):
-        path = self.profile_dir / f"prof_{self.i:03d}.prof"
+    def capture(self, label: str | None = None, desc: str | None = None):
+        filename = f"prof_{self.i:03d}"
+        path = self.profile_dir / f"{filename}.prof"
+        meta_path = self.profile_dir / f"{filename}_meta.json"
+        meta = {"desc": desc, "label": label, "i": self.i}
+        with open(meta_path, "w") as f:
+            json.dump(meta, f)
+
         logger.info("Saving profile at %s", path)
         jax.profiler.save_device_memory_profile(path)
         self.i += 1
 
-    def run_in_background(self, delta_s: float = 3.0):
+    def capture_in_background(self, delta_s: float = 3.0):
         def profiling_loop():
             while not self._stop_event.is_set():
-                self.run()
+                self.capture()
                 time.sleep(delta_s)
 
         self._stop_event.clear()
@@ -106,7 +113,7 @@ def parse_profile_file(prof_file) -> Profile:
     )
 
 
-def parse_profile_dir(profile_dir) -> list[Profile]:
+def parse_profile_dir(profile_dir: str | Path) -> list[Profile]:
     profile_dir = Path(profile_dir)
     prof_files = sorted([p for p in profile_dir.iterdir() if p.is_file()])
     profiles = [parse_profile_file(f) for f in tqdm(prof_files, unit="file")]
@@ -114,9 +121,8 @@ def parse_profile_dir(profile_dir) -> list[Profile]:
 
 
 def plot_total_mem(
-    profiles: list[Profile], delta_s: float = 3.0, save_path: str = None
+    profiles: list[Profile], delta_s: float = 3.0, save_path: str | None = None
 ):
-    print("test")
     total_mem_data = [p.total_mem for p in profiles]
     xs = delta_s * np.arange(len(total_mem_data))
     plt.figure(figsize=(10, 6))
@@ -154,10 +160,9 @@ def plot_function_mem(profiles: list[Profile], delta_s: float = 3.0):
     plt.figure(figsize=(10, 6))
 
     for func, mem_sizes in func_to_mem.items():
-        print(xs, mem_sizes)
         plt.plot(xs, mem_sizes, marker="o", linestyle="-", label=func)
 
-    plt.xlabel("Time (seconds)")
+    plt.xlabel("Capture #")
     plt.ylabel("Memory Usage (bytes)")
     plt.title("Memory Usage Over Time by Function")
     plt.grid(True)
